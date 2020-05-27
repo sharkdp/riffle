@@ -1,0 +1,12 @@
+[package]
+name = "flick"
+version = "0.1.0"
+authors = ["David Peter <mail@david-peter.de>"]
+edition = "2018"
+
+[dependencies]
+crossterm = "0.17"
+
+[[bin]]
+name = "flick"
+path = "src/app/main.rs"
