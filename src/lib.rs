@@ -5,7 +5,7 @@ use crossterm::{
     cursor,
     event::{poll, read, Event, KeyCode, KeyModifiers},
     execute,
-    style::{self, style, Attribute, Color},
+    style::{self, style, Color},
     terminal::{self, disable_raw_mode, enable_raw_mode},
     ExecutableCommand, QueueableCommand, Result,
 };
@@ -14,7 +14,8 @@ pub struct Flick {
     border_color: Color,
     buffer: Vec<String>,
     top_row: usize,
-    footer: Option<String>,
+    header: Option<Vec<String>>,
+    footer: Option<Vec<String>>,
 }
 
 impl Flick {
@@ -23,12 +24,17 @@ impl Flick {
             border_color: Color::Blue,
             buffer: vec![],
             top_row: 0,
+            header: None,
             footer: None,
         }
     }
 
+    pub fn header(&mut self, message: &str) {
+        self.header = Some(message.lines().map(|l| l.to_owned()).collect());
+    }
+
     pub fn footer(&mut self, message: &str) {
-        self.footer = Some(message.to_owned());
+        self.footer = Some(message.lines().map(|l| l.to_owned()).collect());
     }
 
     pub fn append(&mut self, content: &str) {
@@ -48,34 +54,36 @@ impl Flick {
 
         let mut stdout = stdout();
 
+        let header_height = self.header_height();
+
+        // Header
+        if let Some(ref header) = self.header {
+            for r in 0..header.len() {
+                stdout.queue(cursor::MoveTo(0, r as u16))?;
+                stdout.queue(style::PrintStyledContent(style(&header[r])))?;
+            }
+        }
+
+        // Body
         let body_height = self.body_height()?;
 
         for r in 0..body_height {
             if let Some(ref line) = self.buffer.get(self.top_row + r as usize) {
-                stdout.queue(cursor::MoveTo(0, r))?;
+                stdout.queue(cursor::MoveTo(0, header_height + r))?;
                 stdout.queue(style::PrintStyledContent(style(line)))?;
             } else {
                 break;
             }
         }
 
-        // Draw footer
-
+        // Footer
         stdout.queue(cursor::MoveTo(0, body_height))?;
-        stdout.queue(style::PrintStyledContent(
-            style(self.footer.as_deref().unwrap_or("flick"))
-                .attribute(Attribute::Bold)
-                .with(Color::Rgb {
-                    r: 26,
-                    g: 26,
-                    b: 26,
-                })
-                .on(Color::Rgb {
-                    r: 201,
-                    g: 64,
-                    b: 114,
-                }),
-        ))?;
+        if let Some(ref footer) = self.footer {
+            for r in 0..footer.len() {
+                stdout.queue(cursor::MoveTo(0, header_height + body_height + r as u16))?;
+                stdout.queue(style::PrintStyledContent(style(&footer[r])))?;
+            }
+        }
 
         stdout.flush()?;
 
@@ -109,8 +117,17 @@ impl Flick {
         Ok(())
     }
 
+    pub fn header_height(&self) -> u16 {
+        self.header.as_ref().map(|h| h.len()).unwrap_or(0) as u16
+    }
+
+    pub fn footer_height(&self) -> u16 {
+        self.footer.as_ref().map(|h| h.len()).unwrap_or(0) as u16
+    }
+
     pub fn body_height(&self) -> Result<u16> {
-        Ok(crossterm::terminal::size()?.1 - 1) // TODO: can the terminal height be 0? then this would overflow
+        Ok(crossterm::terminal::size()?.1 - self.header_height() - self.footer_height())
+        // TODO: handle overflows, what about size 0 terminals?
     }
 
     pub fn content_length(&self) -> usize {
@@ -125,7 +142,6 @@ impl Flick {
             Err(e) => {
                 self.cleanup().ok();
                 dbg!(&e); // TODO
-                          // eprintln!("Error: {}", e);
             }
         }
     }
