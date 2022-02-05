@@ -51,6 +51,7 @@ impl PagerHandle {
 
 pub struct Pager<'a> {
     handle: PagerHandle,
+    on_init_callback: Box<dyn FnMut(&mut PagerHandle) + 'a>,
     on_resize_callback: Box<dyn FnMut(&mut PagerHandle) + 'a>,
     on_keypress_callback: Box<dyn FnMut(&mut PagerHandle, KeyCode) + 'a>,
 }
@@ -65,9 +66,17 @@ impl<'a> Pager<'a> {
                 footer: None,
                 quit_requested: false,
             },
+            on_init_callback: Box::new(|_handle: &mut PagerHandle| {}),
             on_resize_callback: Box::new(|_handle: &mut PagerHandle| {}),
             on_keypress_callback: Box::new(|_handle: &mut PagerHandle, _code: KeyCode| {}),
         }
+    }
+
+    pub fn on_init<F>(&mut self, callback: F)
+    where
+        F: FnMut(&mut PagerHandle) + 'a,
+    {
+        self.on_init_callback = Box::new(callback);
     }
 
     pub fn on_resize<F>(&mut self, callback: F)
@@ -193,8 +202,11 @@ impl<'a> Pager<'a> {
         execute!(stdout, terminal::EnterAlternateScreen, cursor::Hide)?;
         enable_raw_mode()?;
 
+        // TODO: Do we want to run resize after init here? This would
+        // allow clients to only implement on_resize.
+        (self.on_init_callback)(&mut self.handle);
         (self.on_resize_callback)(&mut self.handle);
-        // check for quit_requested?
+        // TODO: check for quit_requested?
         self.redraw()?;
 
         loop {
