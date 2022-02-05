@@ -7,35 +7,46 @@ use std::str;
 use riffle::Pager;
 
 fn run() -> io::Result<()> {
-    let mut args = env::args_os();
-    args.next();
-
     let mut pager = Pager::new();
 
+    let mut args = env::args_os();
+    args.next();
     let files = args.collect::<Vec<_>>();
-    let output = Command::new("bat")
-        .arg("--force-colorization")
-        .args(files)
-        .output()
-        .expect("Failed to run 'bat'");
 
-    let stdout = str::from_utf8(&output.stdout).expect("Could not decode 'bat' output");
+    pager.on_resize(move |pager| {
+        pager.clear_buffer();
 
-    let lines: Vec<_> = stdout.lines().collect();
+        let width = pager.terminal_width();
 
-    // pager.on_redraw(|mut pager| {
-    //     pager.append("1");
-    // });
-    pager.header(
-        lines[0..3]
-            .iter()
-            .map(|l| format!("{}\n", l))
-            .collect::<String>(),
-    );
+        let output = Command::new("bat")
+            .arg("--style=full")
+            .arg("--force-colorization")
+            .arg("--paging=never")
+            .arg("--wrap=character")
+            .arg(format!("--terminal-width={}", width))
+            .args(&files)
+            .output()
+            .expect("Failed to run 'bat'");
 
-    for line in lines[3..].iter() {
-        pager.append(&line);
-    }
+        let stdout = str::from_utf8(&output.stdout).expect("Could not decode 'bat' output");
+        let lines: Vec<_> = stdout.lines().collect();
+
+        let len = lines.len();
+        if len >= 4 {
+            pager.header(
+                lines[0..3]
+                    .iter()
+                    .map(|l| format!("{}\n", l))
+                    .collect::<String>(),
+            );
+
+            for line in lines[3..(len - 1)].iter() {
+                pager.append(&line);
+            }
+
+            pager.footer(lines[len - 1]);
+        }
+    });
 
     pager.run();
 

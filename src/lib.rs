@@ -10,25 +10,14 @@ use crossterm::{
     ExecutableCommand, QueueableCommand, Result,
 };
 
-pub struct Pager {
+pub struct PagerHandle {
     buffer: Vec<String>,
     top_row: usize,
     header: Option<Vec<String>>,
     footer: Option<Vec<String>>,
-    on_resize_callback: Box<dyn FnMut(&mut Self)>,
 }
 
-impl Pager {
-    pub fn new() -> Self {
-        Pager {
-            buffer: vec![],
-            top_row: 0,
-            header: None,
-            footer: None,
-            on_resize_callback: Box::new(|_pager: &mut Pager| {}),
-        }
-    }
-
+impl PagerHandle {
     pub fn header<S: AsRef<str>>(&mut self, message: S) {
         self.header = Some(message.as_ref().lines().map(|l| l.to_owned()).collect());
     }
@@ -43,9 +32,37 @@ impl Pager {
         }
     }
 
-    pub fn on_resize<F>(&mut self, callback: F)
+    pub fn clear_buffer(&mut self) {
+        self.buffer.clear();
+        self.top_row = 0;
+    }
+
+    pub fn terminal_width(&self) -> u16 {
+        terminal::size().unwrap().0
+    }
+}
+
+pub struct Pager<'a> {
+    handle: PagerHandle,
+    on_resize_callback: Box<dyn FnMut(&mut PagerHandle) + 'a>,
+}
+
+impl<'a> Pager<'a> {
+    pub fn new() -> Self {
+        Pager {
+            handle: PagerHandle {
+                buffer: vec![],
+                top_row: 0,
+                header: None,
+                footer: None,
+            },
+            on_resize_callback: Box::new(|_handle: &mut PagerHandle| {}),
+        }
+    }
+
+    pub fn on_resize<F: FnMut(&mut PagerHandle)>(&mut self, callback: F)
     where
-        F: FnMut(&mut Self) + 'static,
+        F: FnMut(&mut PagerHandle) + 'a,
     {
         self.on_resize_callback = Box::new(callback);
     }
@@ -64,7 +81,7 @@ impl Pager {
         let header_height = self.header_height();
 
         // Header
-        if let Some(ref header) = self.header {
+        if let Some(ref header) = self.handle.header {
             for r in 0..header.len() {
                 stdout.queue(cursor::MoveTo(0, r as u16))?;
                 stdout.queue(style::PrintStyledContent(style(&header[r])))?;
@@ -75,7 +92,7 @@ impl Pager {
         let body_height = self.body_height()?;
 
         for r in 0..body_height {
-            if let Some(ref line) = self.buffer.get(self.top_row + r as usize) {
+            if let Some(ref line) = self.handle.buffer.get(self.handle.top_row + r as usize) {
                 stdout.queue(cursor::MoveTo(0, header_height + r))?;
                 stdout.queue(style::PrintStyledContent(style(line)))?;
             } else {
@@ -85,7 +102,7 @@ impl Pager {
 
         // Footer
         stdout.queue(cursor::MoveTo(0, body_height))?;
-        if let Some(ref footer) = self.footer {
+        if let Some(ref footer) = self.handle.footer {
             for r in 0..footer.len() {
                 stdout.queue(cursor::MoveTo(0, header_height + body_height + r as u16))?;
                 stdout.queue(style::PrintStyledContent(style(&footer[r])))?;
@@ -103,11 +120,11 @@ impl Pager {
 
         let lines = lines.into();
 
-        self.top_row += lines;
+        self.handle.top_row += lines;
 
         let max_top_row = if length > height { length - height } else { 0 };
-        if self.top_row > max_top_row {
-            self.top_row = max_top_row;
+        if self.handle.top_row > max_top_row {
+            self.handle.top_row = max_top_row;
         }
 
         Ok(())
@@ -115,8 +132,8 @@ impl Pager {
 
     pub fn scroll_up<U: Into<usize>>(&mut self, lines: U) -> Result<()> {
         let lines = lines.into();
-        self.top_row = if self.top_row >= lines {
-            self.top_row - lines
+        self.handle.top_row = if self.handle.top_row >= lines {
+            self.handle.top_row - lines
         } else {
             0
         };
@@ -125,11 +142,11 @@ impl Pager {
     }
 
     pub fn header_height(&self) -> u16 {
-        self.header.as_ref().map(|h| h.len()).unwrap_or(0) as u16
+        self.handle.header.as_ref().map(|h| h.len()).unwrap_or(0) as u16
     }
 
     pub fn footer_height(&self) -> u16 {
-        self.footer.as_ref().map(|h| h.len()).unwrap_or(0) as u16
+        self.handle.footer.as_ref().map(|h| h.len()).unwrap_or(0) as u16
     }
 
     pub fn body_height(&self) -> Result<u16> {
@@ -138,7 +155,7 @@ impl Pager {
     }
 
     pub fn content_length(&self) -> usize {
-        self.buffer.len()
+        self.handle.buffer.len()
     }
 
     pub fn run(&mut self) {
@@ -159,6 +176,7 @@ impl Pager {
         execute!(stdout, terminal::EnterAlternateScreen, cursor::Hide)?;
         enable_raw_mode()?;
 
+        (self.on_resize_callback)(&mut self.handle);
         self.redraw()?;
 
         loop {
@@ -182,7 +200,7 @@ impl Pager {
                                 self.scroll_up(self.body_height()?)?;
                             }
                             KeyCode::Home => {
-                                self.top_row = 0;
+                                self.handle.top_row = 0;
                             }
                             KeyCode::End => {
                                 let length = self.content_length();
@@ -203,8 +221,7 @@ impl Pager {
                         // that send up/down arrow events.
                     }
                     Event::Resize(_width, _height) => {
-                        // let callback = self.on_resize_callback.as_mut();
-                        // callback(self);
+                        (self.on_resize_callback)(&mut self.handle);
                         self.redraw()?;
                     }
                 }
