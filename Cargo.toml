@@ -5,7 +5,7 @@ authors = ["David Peter <mail@david-peter.de>"]
 edition = "2018"
 
 [dependencies]
-crossterm = "0.17"
+crossterm = "0.22"
 
 [dev-dependencies]
 bat = "0.19"
