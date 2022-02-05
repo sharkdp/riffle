@@ -10,7 +10,7 @@ use crossterm::{
     ExecutableCommand, QueueableCommand, Result,
 };
 
-pub struct Flick {
+pub struct Pager {
     border_color: Color,
     buffer: Vec<String>,
     top_row: usize,
@@ -18,9 +18,9 @@ pub struct Flick {
     footer: Option<Vec<String>>,
 }
 
-impl Flick {
+impl Pager {
     pub fn new() -> Self {
-        Flick {
+        Pager {
             border_color: Color::Blue,
             buffer: vec![],
             top_row: 0,

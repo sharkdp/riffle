@@ -1,5 +1,5 @@
 [package]
-name = "flick"
+name = "riffle"
 version = "0.1.0"
 authors = ["David Peter <mail@david-peter.de>"]
 edition = "2018"
@@ -8,5 +8,5 @@ edition = "2018"
 crossterm = "0.17"
 
 [[bin]]
-name = "flick"
+name = "riffle"
 path = "src/app/main.rs"
