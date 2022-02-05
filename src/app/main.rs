@@ -14,14 +14,11 @@ fn run() -> io::Result<()> {
     let mut pager = Pager::new();
 
     let mut reader: Box<dyn BufRead> = if let Some(path) = args.next() {
-        // pager.footer(&path.to_string_lossy());
-        pager.header("\x1b[38;5;238m───────┬────────────────────────────────────────────────────────────────────────────────────────────────────\x1b[0m
-       \x1b[38;5;238m│ \x1b[0mFile: \x1b[1mCargo.toml\x1b[0m
-\x1b[38;5;238m───────┼────────────────────────────────────────────────────────────────────────────────────────────────────\x1b[0m");
-        pager.footer("\x1b[38;5;238m───────┴────────────────────────────────────────────────────────────────────────────────────────────────────\x1b[0m");
+        pager.footer(format!("\x1b[7m{}\x1b[0m", path.to_string_lossy()));
         let file = File::open(path)?;
         Box::new(BufReader::new(file))
     } else {
+        // Currently not supported, see https://github.com/crossterm-rs/crossterm/issues/396
         Box::new(stdin.lock())
     };
 

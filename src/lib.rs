@@ -5,42 +5,49 @@ use crossterm::{
     cursor,
     event::{poll, read, Event, KeyCode, KeyModifiers},
     execute,
-    style::{self, style, Color},
+    style::{self, style},
     terminal::{self, disable_raw_mode, enable_raw_mode},
     ExecutableCommand, QueueableCommand, Result,
 };
 
 pub struct Pager {
-    border_color: Color,
     buffer: Vec<String>,
     top_row: usize,
     header: Option<Vec<String>>,
     footer: Option<Vec<String>>,
+    on_resize_callback: Box<dyn FnMut(&mut Self)>,
 }
 
 impl Pager {
     pub fn new() -> Self {
         Pager {
-            border_color: Color::Blue,
             buffer: vec![],
             top_row: 0,
             header: None,
             footer: None,
+            on_resize_callback: Box::new(|_pager: &mut Pager| {}),
         }
     }
 
-    pub fn header(&mut self, message: &str) {
-        self.header = Some(message.lines().map(|l| l.to_owned()).collect());
+    pub fn header<S: AsRef<str>>(&mut self, message: S) {
+        self.header = Some(message.as_ref().lines().map(|l| l.to_owned()).collect());
     }
 
-    pub fn footer(&mut self, message: &str) {
-        self.footer = Some(message.lines().map(|l| l.to_owned()).collect());
+    pub fn footer<S: AsRef<str>>(&mut self, message: S) {
+        self.footer = Some(message.as_ref().lines().map(|l| l.to_owned()).collect());
     }
 
-    pub fn append(&mut self, content: &str) {
-        for line in content.lines() {
+    pub fn append<S: AsRef<str>>(&mut self, content: S) {
+        for line in content.as_ref().lines() {
             self.buffer.push(line.to_owned());
         }
+    }
+
+    pub fn on_resize<F>(&mut self, callback: F)
+    where
+        F: FnMut(&mut Self) + 'static,
+    {
+        self.on_resize_callback = Box::new(callback);
     }
 
     fn clear_screen(&self) -> Result<()> {
@@ -159,12 +166,6 @@ impl Pager {
                 match read()? {
                     Event::Key(event) => {
                         match event.code {
-                            KeyCode::Char('r') => {
-                                self.border_color = Color::Red;
-                            }
-                            KeyCode::Char('b') => {
-                                self.border_color = Color::Blue;
-                            }
                             KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                                 break;
                             }
@@ -202,6 +203,8 @@ impl Pager {
                         // that send up/down arrow events.
                     }
                     Event::Resize(_width, _height) => {
+                        // let callback = self.on_resize_callback.as_mut();
+                        // callback(self);
                         self.redraw()?;
                     }
                 }
