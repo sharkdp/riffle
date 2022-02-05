@@ -114,9 +114,9 @@ impl<'a> Pager<'a> {
 
         // Header
         if let Some(ref header) = self.handle.header {
-            for r in 0..header.len() {
+            for (r, line) in header.iter().enumerate() {
                 stdout.queue(cursor::MoveTo(0, r as u16))?;
-                stdout.queue(style::PrintStyledContent(style(&header[r])))?;
+                stdout.queue(style::PrintStyledContent(style(line)))?;
             }
         }
 
@@ -135,9 +135,9 @@ impl<'a> Pager<'a> {
         // Footer
         stdout.queue(cursor::MoveTo(0, body_height))?;
         if let Some(ref footer) = self.handle.footer {
-            for r in 0..footer.len() {
+            for (r, line) in footer.iter().enumerate() {
                 stdout.queue(cursor::MoveTo(0, header_height + body_height + r as u16))?;
-                stdout.queue(style::PrintStyledContent(style(&footer[r])))?;
+                stdout.queue(style::PrintStyledContent(style(line)))?;
             }
         }
 
