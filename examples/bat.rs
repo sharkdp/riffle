@@ -3,10 +3,15 @@ use std::io;
 use std::process;
 use std::process::Command;
 use std::str;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use riffle::{KeyCode, Pager};
+
+struct Config {
+    enable_wrapping: bool,
+    show_sidebar: bool,
+    run_editor: bool,
+}
 
 fn run() -> io::Result<()> {
     let mut args = env::args_os();
@@ -17,17 +22,43 @@ fn run() -> io::Result<()> {
     ))?;
     let file = &file;
 
+    let config = Arc::new(Mutex::new(Config {
+        enable_wrapping: true,
+        show_sidebar: true,
+        run_editor: false,
+    }));
+
     let mut pager = Pager::new();
+
+    let config2 = config.clone();
     pager.on_resize(move |pager| {
+        let scroll_position = pager.scroll_position();
         pager.clear_buffer();
 
         let width = pager.terminal_width();
 
+        let enable_wrapping = config2.lock().unwrap().enable_wrapping;
+        let show_sidebar = config2.lock().unwrap().show_sidebar;
+
         let output = Command::new("bat")
-            .arg("--style=full")
+            .arg(format!(
+                "--style={}",
+                if show_sidebar {
+                    "full"
+                } else {
+                    "header,grid,snip"
+                }
+            ))
             .arg("--force-colorization")
             .arg("--paging=never")
-            .arg("--wrap=character")
+            .arg(format!(
+                "--wrap={}",
+                if enable_wrapping {
+                    "character"
+                } else {
+                    "never"
+                }
+            ))
             .arg(format!("--terminal-width={}", width))
             .arg(file)
             .output()
@@ -51,21 +82,32 @@ fn run() -> io::Result<()> {
 
             pager.footer(lines[len - 1]);
         }
+
+        pager.scroll_to(scroll_position);
     });
 
-    let open_editor = Arc::new(AtomicBool::new(false));
-    let open_editor_c = open_editor.clone();
+    let config3 = config.clone();
     pager.on_keypress(move |pager, key| match key {
         KeyCode::Char('e') => {
-            open_editor_c.store(true, Ordering::Relaxed);
+            {
+                config3.lock().unwrap().run_editor = true;
+            }
             pager.quit();
+        }
+        KeyCode::Char('n') => {
+            let show_sidebar = &mut config3.lock().unwrap().show_sidebar;
+            *show_sidebar = !*show_sidebar;
+        }
+        KeyCode::Char('w') => {
+            let enable_wrapping = &mut config3.lock().unwrap().enable_wrapping;
+            *enable_wrapping = !*enable_wrapping;
         }
         _ => {}
     });
 
     pager.run();
 
-    if open_editor.load(Ordering::Relaxed) {
+    if config.lock().unwrap().run_editor {
         Command::new(std::env::var_os("EDITOR").expect("EDITOR not set"))
             .arg(file)
             .status()

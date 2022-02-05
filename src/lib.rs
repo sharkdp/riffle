@@ -30,9 +30,7 @@ impl PagerHandle {
     }
 
     pub fn append<S: AsRef<str>>(&mut self, content: S) {
-        for line in content.as_ref().lines() {
-            self.buffer.push(line.to_owned());
-        }
+        self.buffer.push(content.as_ref().into());
     }
 
     pub fn clear_buffer(&mut self) {
@@ -46,6 +44,14 @@ impl PagerHandle {
 
     pub fn quit(&mut self) {
         self.quit_requested = true;
+    }
+
+    pub fn scroll_position(&self) -> usize {
+        self.top_row
+    }
+
+    pub fn scroll_to<U: Into<usize>>(&mut self, line: U) {
+        self.top_row = line.into();
     }
 }
 
@@ -140,7 +146,7 @@ impl<'a> Pager<'a> {
         Ok(())
     }
 
-    pub fn scroll_down<U: Into<usize>>(&mut self, lines: U) -> Result<()> {
+    fn scroll_down<U: Into<usize>>(&mut self, lines: U) -> Result<()> {
         let length = self.content_length();
         let height = self.body_height()? as usize;
 
@@ -156,7 +162,7 @@ impl<'a> Pager<'a> {
         Ok(())
     }
 
-    pub fn scroll_up<U: Into<usize>>(&mut self, lines: U) -> Result<()> {
+    fn scroll_up<U: Into<usize>>(&mut self, lines: U) -> Result<()> {
         let lines = lines.into();
         self.handle.top_row = if self.handle.top_row >= lines {
             self.handle.top_row - lines
@@ -167,20 +173,20 @@ impl<'a> Pager<'a> {
         Ok(())
     }
 
-    pub fn header_height(&self) -> u16 {
+    fn header_height(&self) -> u16 {
         self.handle.header.as_ref().map(|h| h.len()).unwrap_or(0) as u16
     }
 
-    pub fn footer_height(&self) -> u16 {
+    fn footer_height(&self) -> u16 {
         self.handle.footer.as_ref().map(|h| h.len()).unwrap_or(0) as u16
     }
 
-    pub fn body_height(&self) -> Result<u16> {
+    fn body_height(&self) -> Result<u16> {
         Ok(crossterm::terminal::size()?.1 - self.header_height() - self.footer_height())
         // TODO: handle overflows, what about size 0 terminals?
     }
 
-    pub fn content_length(&self) -> usize {
+    fn content_length(&self) -> usize {
         self.handle.buffer.len()
     }
 
@@ -243,6 +249,7 @@ impl<'a> Pager<'a> {
                             }
                             c => {
                                 (self.on_keypress_callback)(&mut self.handle, c);
+                                (self.on_resize_callback)(&mut self.handle);
                                 if self.handle.quit_requested {
                                     break;
                                 }
