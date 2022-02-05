@@ -3,16 +3,22 @@ use std::io;
 use std::process;
 use std::process::Command;
 use std::str;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-use riffle::Pager;
+use riffle::{KeyCode, Pager};
 
 fn run() -> io::Result<()> {
     let mut pager = Pager::new();
 
     let mut args = env::args_os();
     args.next();
-    let files = args.collect::<Vec<_>>();
+    let file = args.next().ok_or(io::Error::new(
+        io::ErrorKind::Other,
+        "Multiple arguments are not supported.",
+    ))?;
 
+    let file_copy = file.clone();
     pager.on_resize(move |pager| {
         pager.clear_buffer();
 
@@ -24,7 +30,7 @@ fn run() -> io::Result<()> {
             .arg("--paging=never")
             .arg("--wrap=character")
             .arg(format!("--terminal-width={}", width))
-            .args(&files)
+            .arg(&file_copy)
             .output()
             .expect("Failed to run 'bat'");
 
@@ -48,7 +54,24 @@ fn run() -> io::Result<()> {
         }
     });
 
+    let open_editor = Arc::new(AtomicBool::new(false));
+    let open_editor_c = open_editor.clone();
+    pager.on_keypress(move |pager, key| match key {
+        KeyCode::Char('e') => {
+            open_editor_c.store(true, Ordering::Relaxed);
+            pager.quit();
+        }
+        _ => {}
+    });
+
     pager.run();
+
+    if open_editor.load(Ordering::Relaxed) {
+        Command::new(std::env::var_os("EDITOR").expect("EDITOR not set"))
+            .arg(&file)
+            .status()
+            .expect("Failed to run editor");
+    }
 
     Ok(())
 }

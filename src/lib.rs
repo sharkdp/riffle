@@ -3,18 +3,21 @@ use std::time::Duration;
 
 use crossterm::{
     cursor,
-    event::{poll, read, Event, KeyCode, KeyModifiers},
+    event::{poll, read, Event, KeyModifiers},
     execute,
     style::{self, style},
     terminal::{self, disable_raw_mode, enable_raw_mode},
     ExecutableCommand, QueueableCommand, Result,
 };
 
+pub use crossterm::event::KeyCode;
+
 pub struct PagerHandle {
     buffer: Vec<String>,
     top_row: usize,
     header: Option<Vec<String>>,
     footer: Option<Vec<String>>,
+    quit_requested: bool,
 }
 
 impl PagerHandle {
@@ -40,11 +43,16 @@ impl PagerHandle {
     pub fn terminal_width(&self) -> u16 {
         terminal::size().unwrap().0
     }
+
+    pub fn quit(&mut self) {
+        self.quit_requested = true;
+    }
 }
 
 pub struct Pager<'a> {
     handle: PagerHandle,
     on_resize_callback: Box<dyn FnMut(&mut PagerHandle) + 'a>,
+    on_keypress_callback: Box<dyn FnMut(&mut PagerHandle, KeyCode) + 'a>,
 }
 
 impl<'a> Pager<'a> {
@@ -55,16 +63,25 @@ impl<'a> Pager<'a> {
                 top_row: 0,
                 header: None,
                 footer: None,
+                quit_requested: false,
             },
             on_resize_callback: Box::new(|_handle: &mut PagerHandle| {}),
+            on_keypress_callback: Box::new(|_handle: &mut PagerHandle, _code: KeyCode| {}),
         }
     }
 
-    pub fn on_resize<F: FnMut(&mut PagerHandle)>(&mut self, callback: F)
+    pub fn on_resize<F>(&mut self, callback: F)
     where
         F: FnMut(&mut PagerHandle) + 'a,
     {
         self.on_resize_callback = Box::new(callback);
+    }
+
+    pub fn on_keypress<F>(&mut self, callback: F)
+    where
+        F: FnMut(&mut PagerHandle, KeyCode) + 'a,
+    {
+        self.on_keypress_callback = Box::new(callback);
     }
 
     fn clear_screen(&self) -> Result<()> {
@@ -177,6 +194,7 @@ impl<'a> Pager<'a> {
         enable_raw_mode()?;
 
         (self.on_resize_callback)(&mut self.handle);
+        // check for quit_requested?
         self.redraw()?;
 
         loop {
@@ -211,7 +229,12 @@ impl<'a> Pager<'a> {
                             {
                                 break;
                             }
-                            _ => {}
+                            c => {
+                                (self.on_keypress_callback)(&mut self.handle, c);
+                                if self.handle.quit_requested {
+                                    break;
+                                }
+                            }
                         }
                         self.redraw()?;
                     }
@@ -222,6 +245,9 @@ impl<'a> Pager<'a> {
                     }
                     Event::Resize(_width, _height) => {
                         (self.on_resize_callback)(&mut self.handle);
+                        if self.handle.quit_requested {
+                            break;
+                        }
                         self.redraw()?;
                     }
                 }
@@ -233,7 +259,7 @@ impl<'a> Pager<'a> {
         Ok(())
     }
 
-    pub fn cleanup(&self) -> Result<()> {
+    fn cleanup(&self) -> Result<()> {
         disable_raw_mode()?;
 
         execute!(stdout(), cursor::Show, terminal::LeaveAlternateScreen)
