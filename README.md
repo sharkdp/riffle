@@ -5,5 +5,5 @@ ready for general use.
 
 How to run the `bat` integration example:
 ```bash
-cargo run -q --example=bat -- <file>
+cargo run -q --release --example=bat-riffle -- <file>
 ```
