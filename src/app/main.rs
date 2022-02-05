@@ -13,25 +13,27 @@ fn run() -> io::Result<()> {
 
     let mut pager = Pager::new();
 
-    let mut reader: Box<dyn BufRead> = if let Some(path) = args.next() {
-        pager.footer(format!("\x1b[7m{}\x1b[0m", path.to_string_lossy()));
-        let file = File::open(path)?;
-        Box::new(BufReader::new(file))
-    } else {
-        // Currently not supported, see https://github.com/crossterm-rs/crossterm/issues/396
-        Box::new(stdin.lock())
-    };
+    pager.on_resize(|pager| {
+        let mut reader: Box<dyn BufRead> = if let Some(path) = args.next() {
+            pager.footer(format!("\x1b[7m{}\x1b[0m", path.to_string_lossy()));
+            let file = File::open(path).expect("Can not open file");
+            Box::new(BufReader::new(file))
+        } else {
+            // Currently not supported, see https://github.com/crossterm-rs/crossterm/issues/396
+            Box::new(stdin.lock())
+        };
 
-    let mut buffer = vec![];
-    while let Ok(num) = reader.read_until(b'\n', &mut buffer) {
-        if num == 0 {
-            break;
+        let mut buffer = vec![];
+        while let Ok(num) = reader.read_until(b'\n', &mut buffer) {
+            if num == 0 {
+                break;
+            }
+
+            let line = String::from_utf8_lossy(&buffer);
+            pager.append(&line);
+            buffer.clear();
         }
-
-        let line = String::from_utf8_lossy(&buffer);
-        pager.append(&line);
-        buffer.clear();
-    }
+    });
 
     pager.run();
 
