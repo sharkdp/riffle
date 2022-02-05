@@ -9,16 +9,15 @@ use std::sync::Arc;
 use riffle::{KeyCode, Pager};
 
 fn run() -> io::Result<()> {
-    let mut pager = Pager::new();
-
     let mut args = env::args_os();
     args.next();
     let file = args.next().ok_or(io::Error::new(
         io::ErrorKind::Other,
-        "Multiple arguments are not supported.",
+        "FILE argument missing",
     ))?;
+    let file = &file;
 
-    let file_copy = file.clone();
+    let mut pager = Pager::new();
     pager.on_resize(move |pager| {
         pager.clear_buffer();
 
@@ -30,7 +29,7 @@ fn run() -> io::Result<()> {
             .arg("--paging=never")
             .arg("--wrap=character")
             .arg(format!("--terminal-width={}", width))
-            .arg(&file_copy)
+            .arg(file)
             .output()
             .expect("Failed to run 'bat'");
 
@@ -68,7 +67,7 @@ fn run() -> io::Result<()> {
 
     if open_editor.load(Ordering::Relaxed) {
         Command::new(std::env::var_os("EDITOR").expect("EDITOR not set"))
-            .arg(&file)
+            .arg(file)
             .status()
             .expect("Failed to run editor");
     }
